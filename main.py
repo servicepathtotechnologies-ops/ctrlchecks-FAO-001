@@ -165,14 +165,14 @@ WORKER_URL = settings.worker_url.rstrip("/")
 # -------------------------------------------------
 class RunRequest(BaseModel):
     prompt: str
-    model: str = "llama3.1:8b"  # Production model for general tasks
+    model: str = settings.model_primary  # Production model for general tasks
     timeout: int = 180
 
 class ProcessRequest(BaseModel):
     task: str
     input: str = None
     image: str = None  # Base64 encoded image for image processing tasks
-    model: str = "llama3.1:8b"  # Production model for general tasks
+    model: str = settings.model_primary  # Production model for general tasks
     timeout: int = 180
     sentence_count: int = 5  # For story generation
     steps: int = 2  # For text-to-image (not supported, but kept for compatibility)
@@ -325,7 +325,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    model: str = "llama3.1:8b"  # Production model for general tasks
+    model: str = settings.model_primary  # Production model for general tasks
     messages: list[ChatMessage]
     stream: bool = False
     options: dict | None = None
@@ -656,7 +656,7 @@ async def create_model_proxy(request: Request):
     ```json
     {
         "name": "ctrlchecks-workflow-builder",
-        "modelfile": "FROM llama3.1:8b\\nSYSTEM \"You are a helpful assistant\"",
+        "modelfile": "FROM qwen2.5:14b-instruct-q4_K_M\\nSYSTEM \"You are a helpful assistant\"",
         "stream": false
     }
     ```
@@ -746,7 +746,7 @@ async def process(req: ProcessRequest):
             # Vision models not supported - return error
             raise HTTPException(
                 status_code=501, 
-                detail="Image processing functionality has been removed. Multimodal features are no longer supported. Please use text-based models: llama3.1:8b (general) or qwen2.5-coder:7b (code)."
+                detail="Image processing functionality has been removed. Multimodal features are no longer supported. Please use text-based models: qwen2.5:14b-instruct-q4_K_M (general) or qwen2.5-coder:7b-instruct-q4_K_M (code)."
             )
             
             # Prepare image (remove data URL prefix if present)
