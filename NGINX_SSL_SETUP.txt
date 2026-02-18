@@ -1,0 +1,240 @@
+# ============================================
+# NGINX REVERSE PROXY & SSL SETUP
+# For ollama.ctrlchecks.ai
+# ============================================
+
+# ============================================
+# STEP 1: Install Nginx
+# ============================================
+
+sudo apt update
+sudo apt install -y nginx
+
+# Check Nginx status
+sudo systemctl status nginx
+
+# ============================================
+# STEP 2: Configure Nginx Reverse Proxy
+# ============================================
+
+# Create Nginx configuration file
+sudo nano /etc/nginx/sites-available/ollama.ctrlchecks.ai
+
+# Paste this configuration:
+# ============================================
+server {
+    listen 80;
+    server_name ollama.ctrlchecks.ai;
+
+    # Logging
+    access_log /var/log/nginx/ollama-access.log;
+    error_log /var/log/nginx/ollama-error.log;
+
+    # Increase timeouts for long-running requests
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    send_timeout 300s;
+
+    # Increase body size limit (for large requests)
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        
+        # Headers
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        
+        # Cache control
+        proxy_cache_bypass $http_upgrade;
+        
+        # Buffering
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+}
+# ============================================
+
+# Save: Ctrl+O, Enter, Ctrl+X
+
+# Enable the site
+sudo ln -s /etc/nginx/sites-available/ollama.ctrlchecks.ai /etc/nginx/sites-enabled/
+
+# Remove default site (optional)
+sudo rm /etc/nginx/sites-enabled/default
+
+# Test Nginx configuration
+sudo nginx -t
+
+# If test passes, reload Nginx
+sudo systemctl reload nginx
+
+# ============================================
+# STEP 3: Verify Route 53 DNS
+# ============================================
+
+# Check if DNS is pointing to your server
+# Run this from your local machine or any external server:
+# nslookup ollama.ctrlchecks.ai
+# OR
+# dig ollama.ctrlchecks.ai
+
+# The A record should point to your server's public IP
+# Get your server's public IP:
+curl ifconfig.me
+# OR
+curl http://169.254.169.254/latest/meta-data/public-ipv4
+
+# ============================================
+# STEP 4: Test HTTP (Port 80)
+# ============================================
+
+# From your local machine or server:
+curl http://ollama.ctrlchecks.ai/health
+curl http://ollama.ctrlchecks.ai/
+
+# Should return the same as localhost:8000
+
+# ============================================
+# STEP 5: Install Certbot for SSL
+# ============================================
+
+sudo apt install -y certbot python3-certbot-nginx
+
+# ============================================
+# STEP 6: Obtain SSL Certificate
+# ============================================
+
+# This will automatically configure Nginx with SSL
+sudo certbot --nginx -d ollama.ctrlchecks.ai
+
+# Follow the prompts:
+# - Enter your email address
+# - Agree to terms
+# - Choose whether to redirect HTTP to HTTPS (recommended: Yes)
+
+# ============================================
+# STEP 7: Test SSL Configuration
+# ============================================
+
+# Test HTTPS endpoint
+curl https://ollama.ctrlchecks.ai/health
+curl https://ollama.ctrlchecks.ai/
+
+# Check SSL certificate
+openssl s_client -connect ollama.ctrlchecks.ai:443 -servername ollama.ctrlchecks.ai
+
+# ============================================
+# STEP 8: Auto-renewal Setup
+# ============================================
+
+# Certbot automatically sets up auto-renewal
+# Test renewal process:
+sudo certbot renew --dry-run
+
+# Check renewal timer
+sudo systemctl status certbot.timer
+
+# ============================================
+# STEP 9: Firewall Configuration (if using UFW)
+# ============================================
+
+# Allow HTTP and HTTPS
+sudo ufw allow 'Nginx Full'
+# OR
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Check firewall status
+sudo ufw status
+
+# ============================================
+# STEP 10: Final Verification
+# ============================================
+
+# 1. Check Nginx is running
+sudo systemctl status nginx
+
+# 2. Check your FastAPI service is running
+sudo systemctl status ollama-api
+
+# 3. Test HTTP (should redirect to HTTPS if configured)
+curl -I http://ollama.ctrlchecks.ai/health
+
+# 4. Test HTTPS
+curl https://ollama.ctrlchecks.ai/health
+curl https://ollama.ctrlchecks.ai/api/tags
+
+# 5. Check Nginx logs
+sudo tail -f /var/log/nginx/ollama-access.log
+sudo tail -f /var/log/nginx/ollama-error.log
+
+# ============================================
+# TROUBLESHOOTING
+# ============================================
+
+# If Nginx test fails, check configuration:
+sudo nginx -t
+
+# View Nginx error logs:
+sudo tail -50 /var/log/nginx/error.log
+
+# Restart Nginx:
+sudo systemctl restart nginx
+
+# Check if port 80 and 443 are listening:
+sudo netstat -tlnp | grep -E ':(80|443)'
+# OR
+sudo ss -tlnp | grep -E ':(80|443)'
+
+# If DNS not resolving, check Route 53:
+# - A record should point to server's public IP
+# - TTL should be reasonable (300-3600 seconds)
+# - Wait for DNS propagation (can take a few minutes)
+
+# ============================================
+# USEFUL COMMANDS
+# ============================================
+
+# Restart Nginx
+sudo systemctl restart nginx
+
+# Reload Nginx (without dropping connections)
+sudo systemctl reload nginx
+
+# View Nginx status
+sudo systemctl status nginx
+
+# View real-time access logs
+sudo tail -f /var/log/nginx/ollama-access.log
+
+# View error logs
+sudo tail -f /var/log/nginx/ollama-error.log
+
+# Renew SSL certificate manually
+sudo certbot renew
+
+# Check SSL certificate expiry
+sudo certbot certificates
+
+# ============================================
+# FINAL CHECKLIST
+# ============================================
+
+# ✓ Nginx installed and running
+# ✓ Nginx configuration created and enabled
+# ✓ Route 53 A record pointing to server IP
+# ✓ HTTP working (port 80)
+# ✓ SSL certificate obtained
+# ✓ HTTPS working (port 443)
+# ✓ Auto-renewal configured
+# ✓ Firewall rules configured
+# ✓ API endpoints accessible via domain

@@ -1,0 +1,82 @@
+# ============================================
+# ENABLE PORT 8000 ACCESS FROM OUTSIDE
+# ============================================
+
+# ============================================
+# OPTION 1: Direct Access (FastAPI on Port 8000)
+# ============================================
+
+# 1. Allow port 8000 in firewall
+sudo ufw allow 8000/tcp
+
+# 2. Check firewall status
+sudo ufw status
+
+# 3. Verify FastAPI is listening on 0.0.0.0:8000 (it should be)
+sudo ss -tlnp | grep 8000
+
+# Now accessible at: http://ollama.ctrlchecks.ai:8000
+# And: https://ollama.ctrlchecks.ai (via Nginx on 443)
+
+# ============================================
+# OPTION 2: Nginx also serves on Port 8000
+# ============================================
+
+# Add this server block to Nginx config
+# This allows both:
+# - https://ollama.ctrlchecks.ai (port 443)
+# - http://ollama.ctrlchecks.ai:8000 (port 8000)
+
+# Edit Nginx config:
+sudo nano /etc/nginx/sites-available/ollama.ctrlchecks.ai
+
+# Add this server block at the end:
+
+server {
+    listen 8000;
+    server_name ollama.ctrlchecks.ai;
+
+    access_log /var/log/nginx/ollama-8000-access.log;
+    error_log /var/log/nginx/ollama-8000-error.log;
+
+    client_max_body_size 100M;
+
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_read_timeout 300s;
+    send_timeout 300s;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_set_header Sec-WebSocket-Extensions $http_sec_websocket_extensions;
+        proxy_set_header Sec-WebSocket-Key $http_sec_websocket_key;
+        proxy_set_header Sec-WebSocket-Version $http_sec_websocket_version;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+}
+
+# Then:
+sudo nginx -t
+sudo systemctl reload nginx
+
+# Allow port 8000 in firewall
+sudo ufw allow 8000/tcp
+
+# ============================================
+# RECOMMENDED: Option 1 (Direct Access)
+# ============================================
+
+# This is simpler and allows direct access to FastAPI
+# Your service is already configured to listen on 0.0.0.0:8000
+# Just need to open the firewall port

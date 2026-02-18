@@ -1,0 +1,259 @@
+# ============================================
+# FRESH SERVER DEPLOYMENT COMMANDS
+# For ollama.ctrlchecks.ai on port 8000
+# ============================================
+
+# ============================================
+# STEP 1: COMPLETE SERVER CLEANUP
+# ============================================
+
+# OPTION A: Use the cleanup script (RECOMMENDED)
+# Upload CLEAN_SERVER.sh to server, then run:
+# chmod +x CLEAN_SERVER.sh
+# sudo ./CLEAN_SERVER.sh
+
+# OPTION B: Manual cleanup commands
+# Stop any running service (if exists)
+sudo systemctl stop ollama-api 2>/dev/null || true
+sudo systemctl disable ollama-api 2>/dev/null || true
+sudo systemctl stop fastapi-ollama 2>/dev/null || true
+sudo systemctl disable fastapi-ollama 2>/dev/null || true
+
+# Kill any process on port 8000
+sudo lsof -ti:8000 | xargs sudo kill -9 2>/dev/null || true
+sudo fuser -k 8000/tcp 2>/dev/null || true
+sudo pkill -f "uvicorn main:app" 2>/dev/null || true
+sudo pkill -f "fastapi" 2>/dev/null || true
+
+# Remove ALL project directories
+sudo rm -rf /opt/ollama-api
+sudo rm -rf /opt/Fast_API_Ollama
+sudo rm -rf /opt/ltx-2
+sudo rm -rf /home/ubuntu/ollama-api
+sudo rm -rf /home/ubuntu/Fast_API_Ollama
+sudo rm -rf ~/ollama-api
+sudo rm -rf ~/Fast_API_Ollama
+sudo rm -rf /var/www/ollama-api
+sudo rm -rf /var/www/Fast_API_Ollama
+
+# Remove Python virtual environments
+sudo find /opt -type d -name "venv" -exec rm -rf {} + 2>/dev/null || true
+sudo find /home -type d -name "venv" -exec rm -rf {} + 2>/dev/null || true
+
+# Remove Python cache files
+sudo find /opt -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+sudo find /home -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+sudo find /opt -name "*.pyc" -delete 2>/dev/null || true
+
+# Remove log files
+sudo rm -f /opt/*.log
+sudo rm -f /home/ubuntu/*.log
+sudo rm -f /var/log/ollama-api.log
+sudo rm -f /var/log/fastapi-ollama.log
+
+# Remove temporary files
+sudo rm -rf /tmp/videos
+sudo rm -rf /tmp/ollama*
+sudo rm -rf /tmp/fastapi*
+sudo rm -rf /tmp/*.mp4
+
+# Remove old systemd service files
+sudo rm -f /etc/systemd/system/ollama-api.service
+sudo rm -f /etc/systemd/system/fastapi-ollama.service
+sudo systemctl daemon-reload
+
+# Verify cleanup
+echo "Checking cleanup..."
+ls -la /opt/
+sudo lsof -i:8000 || echo "Port 8000 is free"
+
+# ============================================
+# STEP 2: CLONE FRESH CODE FROM GITHUB
+# ============================================
+
+# Navigate to where you want to install
+cd /opt
+# OR: cd /home/ubuntu
+# OR: cd ~
+
+# Clone your repository
+git clone https://github.com/servicepathtotechnologies-ops/Fast_API_OLLAMA.git ollama-api
+# OR if you have a specific branch:
+# git clone -b main https://github.com/servicepathtotechnologies-ops/Fast_API_OLLAMA.git ollama-api
+
+# Navigate into the Fast_API_Ollama directory
+cd ollama-api/Fast_API_Ollama
+
+# ============================================
+# STEP 3: SETUP PYTHON ENVIRONMENT
+# ============================================
+
+# Install Python 3.11 if not installed
+sudo apt update
+sudo apt install -y python3.11 python3.11-venv python3-pip
+
+# Create virtual environment
+python3.11 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Upgrade pip
+pip install --upgrade pip
+
+# Install dependencies
+pip install -r requirements.txt
+
+# ============================================
+# STEP 4: CONFIGURE ENVIRONMENT
+# ============================================
+
+# Create .env file from example
+cp env.example .env
+
+# Edit .env file (use nano, vim, or your preferred editor)
+nano .env
+
+# Required .env settings:
+# OLLAMA_URL=http://localhost:11434
+# PORT=8000
+# WORKER_URL=http://localhost:3001
+# ALLOWED_ORIGINS=*
+# TIMEOUT_SECONDS=180.0
+
+# ============================================
+# STEP 5: TEST RUN (OPTIONAL)
+# ============================================
+
+# Test if the application starts (Ctrl+C to stop)
+# uvicorn main:app --host 0.0.0.0 --port 8000
+
+# ============================================
+# STEP 6: SETUP SYSTEMD SERVICE (RECOMMENDED)
+# ============================================
+
+# Create systemd service file
+sudo nano /etc/systemd/system/ollama-api.service
+
+# Paste this content (adjust paths):
+# [Unit]
+# Description=Ollama FastAPI Service
+# After=network.target
+#
+# [Service]
+# Type=simple
+# User=ubuntu
+# WorkingDirectory=/opt/ollama-api/Fast_API_Ollama
+# Environment="PATH=/opt/ollama-api/Fast_API_Ollama/venv/bin"
+# ExecStart=/opt/ollama-api/Fast_API_Ollama/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+# Restart=always
+# RestartSec=10
+#
+# [Install]
+# WantedBy=multi-user.target
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable service to start on boot
+sudo systemctl enable ollama-api
+
+# Start the service
+sudo systemctl start ollama-api
+
+# Check status
+sudo systemctl status ollama-api
+
+# View logs
+sudo journalctl -u ollama-api -f
+
+# ============================================
+# STEP 7: ALTERNATIVE - RUN WITH NOHUP (SIMPLE)
+# ============================================
+
+# If you don't want systemd, use nohup:
+# cd /opt/ollama-api/Fast_API_Ollama
+# source venv/bin/activate
+# nohup uvicorn main:app --host 0.0.0.0 --port 8000 > app.log 2>&1 &
+
+# Check if running
+# ps aux | grep uvicorn
+
+# View logs
+# tail -f app.log
+
+# Stop (find PID and kill)
+# ps aux | grep uvicorn
+# kill <PID>
+
+# ============================================
+# STEP 8: CONFIGURE NGINX (IF NEEDED)
+# ============================================
+
+# If using Nginx as reverse proxy for ollama.ctrlchecks.ai
+# sudo nano /etc/nginx/sites-available/ollama.ctrlchecks.ai
+
+# Paste this configuration:
+# server {
+#     listen 80;
+#     server_name ollama.ctrlchecks.ai;
+#
+#     location / {
+#         proxy_pass http://localhost:8000;
+#         proxy_http_version 1.1;
+#         proxy_set_header Upgrade $http_upgrade;
+#         proxy_set_header Connection 'upgrade';
+#         proxy_set_header Host $host;
+#         proxy_set_header X-Real-IP $remote_addr;
+#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#         proxy_set_header X-Forwarded-Proto $scheme;
+#         proxy_cache_bypass $http_upgrade;
+#     }
+# }
+
+# Enable site
+# sudo ln -s /etc/nginx/sites-available/ollama.ctrlchecks.ai /etc/nginx/sites-enabled/
+# sudo nginx -t
+# sudo systemctl reload nginx
+
+# ============================================
+# STEP 9: VERIFY DEPLOYMENT
+# ============================================
+
+# Check if service is running
+sudo systemctl status ollama-api
+
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Test root endpoint
+curl http://localhost:8000/
+
+# Check port 8000 is listening
+sudo netstat -tlnp | grep 8000
+# OR
+sudo ss -tlnp | grep 8000
+
+# ============================================
+# USEFUL COMMANDS
+# ============================================
+
+# Restart service
+sudo systemctl restart ollama-api
+
+# Stop service
+sudo systemctl stop ollama-api
+
+# Start service
+sudo systemctl start ollama-api
+
+# View logs
+sudo journalctl -u ollama-api -n 100
+sudo journalctl -u ollama-api -f
+
+# Update code from GitHub
+cd /opt/ollama-api/Fast_API_Ollama
+git pull origin main
+source venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart ollama-api
